@@ -1,0 +1,103 @@
+package main
+
+import (
+	"compress/gzip"
+	"errors"
+	"flag"
+	"fmt"
+	encrypter "github.com/cyb3rgodly/secureme"
+	"io"
+	"os"
+	"time"
+)
+
+func main()  {
+	var source, destination string
+	var useConsole bool
+	flag.StringVar(&source, "source", "", "the encrypted file")
+	flag.StringVar(&destination, "destination", "",
+		"the location to decrypt the data to")
+	flag.BoolVar(&useConsole, "console", false, "output encrypted data to console")
+
+	flag.Parse()
+	if source == "" || destination == "" {
+		var valid bool
+		if len(os.Args) == 3 && os.Args[1] != "" && os.Args[2] != "" && os.Args[1][0] != '-' && os.Args[2][0] != '-' {
+			valid = true
+			source = os.Args[1]
+			destination = os.Args[2]
+		}
+
+		if !valid && useConsole && source != "" {
+			valid = true
+		}
+
+		if !valid {
+			flag.Usage()
+			os.Exit(1)
+		}
+	}
+
+	logErr := func(err error) {
+		os.Stderr.WriteString("\n" + err.Error())
+		os.Exit(1)
+	}
+
+	src, err := os.Open(source)
+	if err != nil {
+		logErr(err)
+	}
+
+	defer src.Close()
+
+	var dst io.Writer
+
+	if !useConsole {
+		d, err := os.Create(destination)
+		if err != nil {
+			logErr(err)
+		}
+
+		dst = d
+		defer d.Close()
+	} else {
+		dst = os.Stdout
+	}
+
+
+
+
+	srcInfo, err := src.Stat()
+	if err != nil {
+		logErr(err)
+	}
+
+	if !useConsole {
+		dstFile, ok := dst.(*os.File)
+		if !ok {
+			logErr(errors.New("something went wrong"))
+		}
+
+		dstInfo, err := dstFile.Stat()
+		if err != nil {
+			logErr(err)
+		}
+
+		if os.SameFile(dstInfo, srcInfo) {
+			logErr(errors.New("different file must be used between source and destination"))
+		}
+	}
+
+
+	pass := encrypter.GetSecureInput("enter passphrase: ")
+	start := time.Now()
+	os.Stdout.WriteString("\ndecrypting....\n")
+	reader, err := gzip.NewReader(src)
+	if err != nil {
+		logErr(err)
+	}
+	if err := encrypter.CopyToWriter([]byte(pass), reader, dst); err != nil {
+		logErr(err)
+	}
+	fmt.Println("decryption completed in", time.Since(start))
+}
