@@ -1,0 +1,82 @@
+package main
+
+import (
+	"compress/gzip"
+	"errors"
+	"flag"
+	"fmt"
+	encrypter "github.com/cyb3rgodly/secureme"
+	"io"
+	"os"
+	"time"
+)
+
+
+func main(){
+	var source, destination string
+	flag.StringVar(&source, "source", "", "the source file path to generate encrypted data from")
+	flag.StringVar(&destination, "destination", "",
+		"the destination file path that encrypted data will be stored to")
+
+	flag.Parse()
+	if source == "" || destination == "" {
+		var valid bool
+		if len(os.Args) == 3 && os.Args[1] != "" && os.Args[2] != "" {
+			valid = true
+			source = os.Args[1]
+			destination = os.Args[2]
+		}
+
+		if !valid {
+			flag.Usage()
+			os.Exit(1)
+		}
+	}
+
+	logErr := func(err error) {
+		os.Stderr.WriteString("\n" + err.Error())
+		os.Exit(1)
+	}
+
+	src, err := os.Open(source)
+	if err != nil {
+		logErr(err)
+	}
+
+	defer src.Close()
+
+	dst, err := os.Create(destination)
+	if err != nil {
+		logErr(err)
+	}
+
+	defer dst.Close()
+
+	srcInfo, err := src.Stat()
+	if err != nil {
+		logErr(err)
+	}
+
+	dstInfo, err := dst.Stat()
+	if err != nil {
+		logErr(err)
+	}
+
+	if srcInfo.Name() == dstInfo.Name() {
+		logErr(errors.New("different file must be used between source and destination"))
+	}
+
+	pass := encrypter.GetSecureInput("enter passphrase: ")
+	start := time.Now()
+	os.Stdout.WriteString("\nencrypting....\n")
+	key, err := encrypter.DeriveKey([]byte(pass), nil)
+	zipper := gzip.NewWriter(dst)
+	defer zipper.Close()
+	writer := encrypter.NewWriter(key, zipper)
+
+	if _, err = io.Copy(writer, src); err != nil {
+		logErr(err)
+	}
+
+	fmt.Println("successfully encrypted. took", time.Since(start))
+}
